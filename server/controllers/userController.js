@@ -2,6 +2,11 @@ const bcrypt = require("bcryptjs");
 const mongoose = require("mongoose");
 const User = require("../models/User");
 const { STATIC_ADMIN } = require("../config/staticAdmin");
+const {
+  runCascade,
+  deleteUserWithRecords,
+  describeRemoved
+} = require("../config/dataIntegrity");
 
 const CREATABLE_ROLES = ["bhw", "staff", "admin"];
 
@@ -151,20 +156,31 @@ const deleteUser = async (req, res) => {
       });
     }
 
-    await User.findByIdAndDelete(user._id);
+    // The account and every record that belongs to it are removed together.
+    // Records that depend on the account are deleted first, the account last,
+    // so an interrupted cleanup never leaves an account without its children.
+    const removed = await runCascade((session) =>
+      deleteUserWithRecords(user, session)
+    );
+
+    const summary = describeRemoved(removed);
 
     res.json({
-      message: `${user.name} (${user.email}) account deleted successfully.`,
+      message: summary
+        ? `${user.name} (${user.email}) account deleted successfully. Also removed ${summary}.`
+        : `${user.name} (${user.email}) account deleted successfully. No other records were linked to this account.`,
       deleted: {
         id: user._id,
         name: user.name,
         email: user.email,
         role: user.role
-      }
+      },
+      removed
     });
   } catch (error) {
     res.status(500).json({
-      message: "Failed to delete account.",
+      message:
+        "Failed to delete the account and its associated records. Please try again.",
       error: error.message
     });
   }

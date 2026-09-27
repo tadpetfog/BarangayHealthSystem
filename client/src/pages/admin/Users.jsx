@@ -47,6 +47,7 @@ function Users() {
   const [expandedId, setExpandedId] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [deleteError, setDeleteError] = useState("");
   const cancelDeleteRef = useRef(null);
   const signedInId = signedInAccountId();
 
@@ -134,13 +135,52 @@ function Users() {
 
   const openDeleteDialog = (account) => {
     setMessage("");
+    setDeleteError("");
     setPendingDelete(account);
   };
 
   const closeDeleteDialog = () => {
     if (deletingId) return;
+    setDeleteError("");
     setPendingDelete(null);
   };
+
+  // What the cascade delete removes together with the account. Only an
+  // administrator can reach this dialog, and the backend repeats every check.
+  const deleteImpact = (account) => {
+    if (account.role === "resident") {
+      return [
+        "the patient record and personal health information",
+        "every appointment booked for that patient",
+        "the consultation history recorded for those appointments"
+      ];
+    }
+
+    if (account.role === "bhw" || account.role === "staff") {
+      return [
+        "the consultations recorded by this health worker",
+        "any patient record linked to this account, together with its appointments and consultations"
+      ];
+    }
+
+    return [
+      "any patient record linked to this account, together with its appointments and consultations",
+      "the consultations recorded by this account"
+    ];
+  };
+
+  const removedSummary = (removed) =>
+    [
+      { count: removed?.patients || 0, label: "patient record" },
+      { count: removed?.appointments || 0, label: "appointment" },
+      { count: removed?.consultations || 0, label: "consultation record" }
+    ]
+      .filter((entry) => entry.count > 0)
+      .map(
+        (entry) =>
+          `${entry.count} ${entry.label}${entry.count === 1 ? "" : "s"}`
+      )
+      .join(", ");
 
   const confirmDelete = async () => {
     const account = pendingDelete;
@@ -148,19 +188,33 @@ function Users() {
     if (!account) return;
 
     setDeletingId(account._id);
+    setDeleteError("");
 
     try {
       const response = await api.delete(`/users/${account._id}`);
+      const summary = removedSummary(response.data?.removed);
 
-      setMessage(
-        response.data.message || `${account.name} account deleted successfully.`
+      // Remove the account from the list immediately, then reload the records
+      // the backend really kept so the page never shows stale data.
+      setAccounts((current) =>
+        current.filter((item) => item._id !== account._id)
       );
       if (expandedId === account._id) setExpandedId(null);
+
+      setMessage(
+        summary
+          ? `${account.name} account deleted. ${summary} also removed.`
+          : `${account.name} account deleted successfully.`
+      );
       setPendingDelete(null);
       await loadAccounts();
     } catch (error) {
-      setPendingDelete(null);
-      setMessage(error.response?.data?.message || "Failed to delete account.");
+      // Nothing is reported as deleted unless the backend confirmed it.
+      setDeleteError(
+        error.response?.data?.message ||
+          "Failed to delete this account and its records."
+      );
+      await loadAccounts();
     } finally {
       setDeletingId(null);
     }
@@ -379,6 +433,23 @@ function Users() {
               This permanently removes the account from the database. The person
               will no longer be able to sign in.
             </p>
+
+            <div className="confirm-impact">
+              <p className="confirm-impact-title">
+                Deleting this{" "}
+                {(
+                  roleLabels[pendingDelete.role] || pendingDelete.role
+                ).toLowerCase()}{" "}
+                account also permanently deletes:
+              </p>
+              <ul className="confirm-impact-list">
+                {deleteImpact(pendingDelete).map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+
+            {deleteError && <p className="confirm-error">{deleteError}</p>}
 
             <dl className="confirm-account">
               <div>

@@ -3,11 +3,10 @@ import Navbar from "../components/Navbar.jsx";
 import api from "../services/api.js";
 import { checkBooking } from "../utils/availability.js";
 import { Alert, StatusBadge, EmptyState } from "../components/dashboard/DashboardUI.jsx";
-import { CalendarIcon, ClipboardIcon } from "../components/Icons.jsx";
+import { CalendarIcon } from "../components/Icons.jsx";
 
 function MyAppointments() {
   const [appointments, setAppointments] = useState([]);
-  const [servicesReceived, setServicesReceived] = useState([]);
   const [hasProfile, setHasProfile] = useState(true);
   const [message, setMessage] = useState("");
   const [editingId, setEditingId] = useState(null);
@@ -38,15 +37,6 @@ function MyAppointments() {
             error.response?.data?.message || "Failed to load appointments."
           );
         }
-      });
-
-    api
-      .get("/consultations")
-      .then((response) => {
-        if (!cancelled) setServicesReceived(response.data);
-      })
-      .catch(() => {
-        if (!cancelled) setServicesReceived([]);
       });
 
     return () => {
@@ -191,28 +181,6 @@ function MyAppointments() {
           ))}
         </ul>
 
-        <h2 style={{ marginTop: "2rem" }}>Services Received</h2>
-
-        {servicesReceived.length === 0 && (
-          <EmptyState
-            icon={<ClipboardIcon />}
-            title="No health services have been provided to you yet."
-            hint="Completed consultations at the health center will appear here."
-          />
-        )}
-
-        <ul>
-          {servicesReceived.map((service) => (
-            <li key={service._id}>
-              <h3>{service.serviceProvided}</h3>
-              <p><strong>Date:</strong> {service.consultationDate ? service.consultationDate.split("T")[0] : ""}</p>
-              <p><strong>Notes:</strong> {service.notes}</p>
-              <p style={{ margin: "0.55rem 0 0" }}>
-                <StatusBadge status={service.status} />
-              </p>
-            </li>
-          ))}
-        </ul>
       </div>
     </div>
   );

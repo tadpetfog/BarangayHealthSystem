@@ -1,6 +1,8 @@
+const mongoose = require('mongoose');
 const Consultation = require('../models/Consultation');
 const Appointment = require('../models/Appointment');
 const Patient = require('../models/Patient');
+const { syncAppointmentStatuses } = require('../services/appointmentStatus');
 const {
   isResident,
   ownPatientIds,
@@ -11,16 +13,24 @@ const CONSULTATION_STATUSES = ['Completed', 'Cancelled'];
 
 const createConsultation = async (req, res) => {
   try {
+    const patientId = req.body.patientId
+      ? req.body.patientId._id || req.body.patientId
+      : null;
+    const appointmentId = req.body.appointmentId
+      ? req.body.appointmentId._id || req.body.appointmentId
+      : null;
+
+    if (!patientId || !appointmentId) {
+      return res.status(400).json({
+        message:
+          'A patient and an appointment are required to record a consultation.'
+      });
+    }
+
     if (isResident(req.user)) {
       const patientIds = await ownPatientIds(req.user);
-      const patientId = req.body.patientId
-        ? req.body.patientId._id || req.body.patientId
-        : null;
 
-      if (
-        !patientId ||
-        !patientIds.some((id) => String(id) === String(patientId))
-      ) {
+      if (!patientIds.some((id) => String(id) === String(patientId))) {
         return res.status(403).json({
           message:
             'You can only record consultations for your own patient record.'
@@ -28,10 +38,45 @@ const createConsultation = async (req, res) => {
       }
     }
 
+    // A consultation must point at records that still exist, otherwise it
+    // would become an orphaned entry that no account or patient owns.
+    const [patient, appointment] = await Promise.all([
+      mongoose.Types.ObjectId.isValid(patientId)
+        ? Patient.exists({ _id: patientId })
+        : null,
+      mongoose.Types.ObjectId.isValid(appointmentId)
+        ? Appointment.findById(appointmentId).select('patientId').lean()
+        : null
+    ]);
+
+    if (!patient) {
+      return res.status(400).json({
+        message:
+          'The selected patient record no longer exists. Please refresh and try again.'
+      });
+    }
+
+    if (!appointment) {
+      return res.status(400).json({
+        message:
+          'The selected appointment no longer exists. Please refresh and try again.'
+      });
+    }
+
+    if (String(appointment.patientId) !== String(patientId)) {
+      return res.status(400).json({
+        message: 'The selected patient does not match the chosen appointment.'
+      });
+    }
+
     const consultation = await Consultation.create({
       ...req.body,
+      patientId,
+      appointmentId,
       healthWorkerId: req.user.id
     });
+
+    await syncAppointmentStatuses(appointmentId);
 
     res.status(201).json({
       message: 'Consultation recorded successfully.',
@@ -47,6 +92,8 @@ const createConsultation = async (req, res) => {
 
 const getConsultations = async (req, res) => {
   try {
+    await syncAppointmentStatuses();
+
     const filter = isResident(req.user)
       ? { patientId: { $in: await ownPatientIds(req.user) } }
       : {};
@@ -76,7 +123,16 @@ const updateConsultation = async (req, res) => {
       });
     }
 
-    const { healthWorkerId, patientId, ...updates } = req.body;
+    const existingConsultation = await Consultation.findById(req.params.id);
+
+    if (!existingConsultation) {
+      return res.status(404).json({ message: 'Consultation not found.' });
+    }
+
+    const updates = { ...req.body };
+    delete updates.healthWorkerId;
+    delete updates.patientId;
+    delete updates.appointmentId;
 
     const consultation = await Consultation.findByIdAndUpdate(
       req.params.id,
@@ -87,6 +143,8 @@ const updateConsultation = async (req, res) => {
     if (!consultation) {
       return res.status(404).json({ message: 'Consultation not found.' });
     }
+
+    await syncAppointmentStatuses(consultation.appointmentId);
 
     res.json({
       message: 'Consultation updated successfully.',
@@ -130,12 +188,6 @@ const completeConsultation = async (req, res) => {
       return res.status(404).json({ message: 'Consultation not found.' });
     }
 
-    if (consultation.status === 'Completed') {
-      return res.status(400).json({
-        message: 'This consultation has already been completed.'
-      });
-    }
-
     const appointment = consultation.appointmentId;
     if (!appointment) {
       return res.status(400).json({
@@ -153,13 +205,12 @@ const completeConsultation = async (req, res) => {
       });
     }
 
-    consultation.status = 'Completed';
-    await consultation.save();
-
-    if (appointment.status !== 'Completed') {
-      appointment.status = 'Completed';
-      await appointment.save();
+    if (consultation.status !== 'Completed') {
+      consultation.status = 'Completed';
+      await consultation.save();
     }
+
+    await syncAppointmentStatuses(appointment._id);
 
     const completed = await Consultation.findById(consultationId)
       .populate('appointmentId')
@@ -193,6 +244,8 @@ const buildAppointmentHistory = async (patientId) => {
     .filter((a) => a._id)
     .map((a) => a._id.toString());
 
+  await syncAppointmentStatuses(appointments.map((appointment) => appointment._id));
+
   let consultations = [];
   if (appointmentIds.length > 0) {
     consultations = await Consultation.find({
@@ -204,11 +257,17 @@ const buildAppointmentHistory = async (patientId) => {
 
   const consultationById = new Map();
   for (const c of consultations) {
-    if (c.appointmentId?._id) {
-      consultationById.set(
-        c.appointmentId._id.toString(),
-        c
-      );
+    const linkedAppointmentId = c.appointmentId?._id || c.appointmentId;
+    if (linkedAppointmentId) {
+      const key = String(linkedAppointmentId);
+      const existing = consultationById.get(key);
+      if (
+        !existing ||
+        c.status === 'Completed' ||
+        (existing.status !== 'Completed' && c.status === 'Cancelled')
+      ) {
+        consultationById.set(key, c);
+      }
     }
   }
 
@@ -221,7 +280,12 @@ const buildAppointmentHistory = async (patientId) => {
       date: appointment.date,
       time: appointment.time,
       purpose: appointment.purpose,
-      status: appointment.status,
+      status:
+        consultation?.status === 'Completed'
+          ? 'Completed'
+          : consultation?.status === 'Cancelled'
+            ? 'Cancelled'
+            : appointment.status,
       service:
         appointment.serviceId &&
         typeof appointment.serviceId === 'object'

@@ -20,7 +20,7 @@ const roleLabels = {
   admin: "Administrator"
 };
 
-const APPOINTMENT_STATUSES = ["Pending", "Confirmed", "Completed", "Cancelled"];
+const APPOINTMENT_STATUSES = ["Pending", "Confirmed", "Cancelled"];
 
 function Patients() {
   const [patients, setPatients] = useState([]);
@@ -419,7 +419,7 @@ function Patients() {
                                 value={historyEdit.status}
                                 onChange={(e) => setHistoryEdit((c) => ({ ...c, status: e.target.value }))}
                               >
-                                {APPOINTMENT_STATUSES.map((s) => (
+                                {[...APPOINTMENT_STATUSES, ...(historyEdit.status === "Completed" ? ["Completed"] : [])].map((s) => (
                                   <option key={s} value={s}>{s}</option>
                                 ))}
                               </select>

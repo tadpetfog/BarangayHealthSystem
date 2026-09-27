@@ -42,4 +42,8 @@ const patientSchema = new mongoose.Schema(
   }
 );
 
+// One account owns at most one patient record. The API checks first, but the
+// database enforces it as well so duplicate patient records cannot pile up.
+patientSchema.index({ userId: 1 }, { unique: true });
+
 module.exports = mongoose.model("Patient", patientSchema);

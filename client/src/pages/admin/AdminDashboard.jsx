@@ -25,12 +25,15 @@ function AdminDashboard() {
   useEffect(() => {
     let cancelled = false;
 
-    api
-      .get("/analytics")
-      .then((response) => {
+    const refreshAnalytics = () => {
+      api.get("/analytics").then((response) => {
         if (!cancelled) setAnalytics(response.data);
-      })
-      .catch(() => {});
+      }).catch(() => {});
+    };
+
+    refreshAnalytics();
+    const analyticsInterval = window.setInterval(refreshAnalytics, 30000);
+    window.addEventListener("focus", refreshAnalytics);
 
     api
       .get("/users")
@@ -55,6 +58,8 @@ function AdminDashboard() {
 
     return () => {
       cancelled = true;
+      window.clearInterval(analyticsInterval);
+      window.removeEventListener("focus", refreshAnalytics);
     };
   }, []);
 
@@ -82,7 +87,7 @@ function AdminDashboard() {
               icon={<CalendarIcon />}
               label="Appointments"
               value={analytics.totalAppointments}
-              hint={`${analytics.pendingAppointments} pending · ${analytics.completedAppointments} completed`}
+              hint={`${analytics.pendingAppointments} pending · ${analytics.confirmedAppointments} confirmed · ${analytics.completedAppointments} completed · ${analytics.cancelledAppointments} cancelled`}
               tone="amber"
             />
 
@@ -90,7 +95,7 @@ function AdminDashboard() {
               icon={<ClipboardIcon />}
               label="Consultations"
               value={analytics.totalConsultations}
-              hint="Health services provided."
+              hint={`${analytics.completedConsultations} completed · ${analytics.cancelledConsultations} cancelled`}
               tone="teal"
             />
 

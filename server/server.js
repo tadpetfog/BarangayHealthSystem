@@ -4,6 +4,7 @@ const express = require("express");
 const cors = require("cors");
 const connectDB = require("./config/db");
 const { ensureStaticAdmin } = require("./config/staticAdmin");
+const { transactionsAvailable } = require("./config/dataIntegrity");
 const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
 const patientRoutes = require("./routes/patientRoutes");
@@ -22,6 +23,13 @@ connectDB().then(async () => {
   } catch (error) {
     console.error("Static administrator setup failed:", error.message);
   }
+
+  const atomicCascades = await transactionsAvailable();
+  console.log(
+    atomicCascades
+      ? "Cascade deletions run inside a MongoDB transaction."
+      : "MongoDB standalone: cascade deletions run sequentially (with a retry) because transactions are unavailable."
+  );
 });
 
 app.use(cors());

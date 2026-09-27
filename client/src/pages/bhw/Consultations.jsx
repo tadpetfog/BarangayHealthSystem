@@ -81,6 +81,7 @@ function Consultations() {
       setMessage(response.data.message || "Consultation updated.");
       cancelEdit();
       loadConsultations();
+      loadAppointments();
     } catch (error) {
       setMessage(
         error.response?.data?.message || "Failed to update consultation."
@@ -154,6 +155,7 @@ function Consultations() {
       setNotes("");
       setStatus("Completed");
       loadConsultations();
+      loadAppointments();
     } catch (error) {
       setMessage(error.response?.data?.message || "Failed to add consultation.");
     }

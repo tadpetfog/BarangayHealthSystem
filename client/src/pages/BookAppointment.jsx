@@ -12,21 +12,39 @@ function BookAppointment() {
   const [purpose, setPurpose] = useState("");
   const [message, setMessage] = useState("");
   const [scheduleHint, setScheduleHint] = useState("");
+  const [servicesLoaded, setServicesLoaded] = useState(false);
   const navigate = useNavigate();
 
+  const loadServices = async () => {
+    try {
+      const response = await api.get("/health-services");
+      setServices(response.data.filter((s) => s.status === "Active"));
+      setServicesLoaded(true);
+    } catch (error) {
+      setMessage("Failed to load services.");
+    }
+  };
+
   useEffect(() => {
-    const loadServices = async () => {
-      try {
-        const response = await api.get("/health-services");
-        setServices(response.data.filter((s) => s.status === "Active"));
-      } catch (error) {
-        setMessage("Failed to load services.");
-      }
-    };
     loadServices();
   }, []);
 
   const selectedService = services.find((s) => s._id === serviceId) || null;
+
+  // An administrator can delete a service while this page is open. As soon as
+  // the refreshed list no longer contains the selected service the selection is
+  // dropped, so a stale service can never be submitted.
+  useEffect(() => {
+    if (!servicesLoaded || !serviceId) return;
+
+    if (!services.some((s) => s._id === serviceId)) {
+      setServiceId("");
+      setScheduleHint("");
+      setMessage(
+        "The health service you selected is no longer available. Please choose another service."
+      );
+    }
+  }, [services, servicesLoaded, serviceId]);
 
   const describeAvailability = () => {
     if (!selectedService) return "";
@@ -80,7 +98,17 @@ function BookAppointment() {
       setMessage("Appointment booked successfully.");
       setTimeout(() => navigate("/my-appointments"), 800);
     } catch (error) {
-      setMessage(error.response?.data?.message || "Failed to book appointment.");
+      const status = error.response?.status;
+
+      setMessage(
+        error.response?.data?.message || "Failed to book appointment."
+      );
+
+      // A 400/409 usually means the service is gone: reload the list so the
+      // dropdown stops offering it (the effect above clears the selection).
+      if (status === 400 || status === 409) {
+        await loadServices();
+      }
     }
   };
 

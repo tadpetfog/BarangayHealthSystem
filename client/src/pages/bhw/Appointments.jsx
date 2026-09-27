@@ -84,7 +84,15 @@ function Appointments() {
       cancelEdit();
       refresh();
     } catch (error) {
+      const status = error.response?.status;
+
       setMessage(error.response?.data?.message || "Failed to save.");
+
+      // Reload when the backend rejected the service (400/409) so a deleted
+      // service stops being offered in the dropdown.
+      if (status === 400 || status === 409) {
+        refresh();
+      }
     }
   };
 
@@ -157,7 +165,7 @@ function Appointments() {
             <div>
               <label>Status</label>
               <select value={form.status} onChange={set("status")}>
-                {["Pending", "Confirmed", "Completed", "Cancelled"].map((s) => (
+                {["Pending", "Confirmed", "Cancelled", ...(form.status === "Completed" ? ["Completed"] : [])].map((s) => (
                   <option key={s} value={s}>{s}</option>
                 ))}
               </select>

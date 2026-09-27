@@ -47,4 +47,9 @@ const consultationSchema = new mongoose.Schema(
   }
 );
 
+// Used by the consultation lists and by the cascade cleanup.
+consultationSchema.index({ patientId: 1 });
+consultationSchema.index({ appointmentId: 1 });
+consultationSchema.index({ healthWorkerId: 1 });
+
 module.exports = mongoose.model("Consultation", consultationSchema);

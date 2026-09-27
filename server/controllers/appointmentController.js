@@ -1,5 +1,16 @@
+const mongoose = require("mongoose");
 const Appointment = require("../models/Appointment");
 const HealthService = require("../models/HealthService");
+const Patient = require("../models/Patient");
+const {
+  hasCompletedConsultation,
+  syncAppointmentStatuses
+} = require("../services/appointmentStatus");
+const {
+  runCascade,
+  deleteAppointmentWithRecords,
+  describeRemoved
+} = require("../config/dataIntegrity");
 const {
   isResident,
   isHealthCenter,
@@ -72,6 +83,68 @@ const findBlockingAppointment = async ({ serviceId, date, time }, excludeId = nu
 
 const isDuplicateSlotError = (error) => error && error.code === 11000;
 
+/**
+ * MongoDB has no foreign keys, so a booking is only accepted when the health
+ * service it references still exists. This is what protects a booking when a
+ * service is deleted while the booking form is open.
+ */
+const serviceLookup = async (serviceId) => {
+  if (!serviceId || !mongoose.Types.ObjectId.isValid(serviceId)) {
+    return {
+      ok: false,
+      status: 400,
+      message: "A valid health service is required to book an appointment."
+    };
+  }
+
+  const serviceExists = await HealthService.exists({ _id: serviceId });
+
+  if (!serviceExists) {
+    return {
+      ok: false,
+      status: 400,
+      message:
+        "The selected health service no longer exists. Please refresh the page and choose another service."
+    };
+  }
+
+  return { ok: true };
+};
+
+/**
+ * Verifies, right after the appointment was stored, that the health service is
+ * still there. If an administrator removed it in the meantime the appointment
+ * is rolled back instead of keeping a reference to a deleted service.
+ * Returns null when the booking is valid.
+ */
+const reviewCreatedAppointment = async (appointment, serviceId) => {
+  const serviceStillExists = await HealthService.exists({ _id: serviceId });
+
+  if (serviceStillExists) {
+    return null;
+  }
+
+  try {
+    await Appointment.deleteOne({ _id: appointment._id });
+  } catch (error) {
+    console.error(
+      `Could not roll back appointment ${appointment._id}: ${error.message}`
+    );
+
+    return {
+      status: 500,
+      message:
+        "That health service was removed while the appointment was being booked and the appointment could not be rolled back. Please contact the administrator."
+    };
+  }
+
+  return {
+    status: 409,
+    message:
+      "That health service was removed by an administrator while you were booking, so the appointment was not created. Please choose another service."
+  };
+};
+
 const createAppointment = async (req, res) => {
   try {
     if (isResident(req.user)) {
@@ -83,6 +156,14 @@ const createAppointment = async (req, res) => {
         });
       }
 
+      const serviceCheck = await serviceLookup(req.body.serviceId);
+
+      if (!serviceCheck.ok) {
+        return res.status(serviceCheck.status).json({
+          message: serviceCheck.message
+        });
+      }
+
       const appointment = await Appointment.create({
         patientId: req.body.patientId,
         serviceId: req.body.serviceId,
@@ -91,6 +172,15 @@ const createAppointment = async (req, res) => {
         purpose: req.body.purpose,
         status: "Pending"
       });
+
+      const rejected = await reviewCreatedAppointment(
+        appointment,
+        req.body.serviceId
+      );
+
+      if (rejected) {
+        return res.status(rejected.status).json({ message: rejected.message });
+      }
 
       return res.status(201).json({
         message: "Appointment created successfully.",
@@ -113,6 +203,33 @@ const createAppointment = async (req, res) => {
         });
       }
 
+      if (status === "Completed") {
+        return res.status(400).json({
+          message:
+            "An appointment is completed when its linked consultation is completed."
+        });
+      }
+
+      // An appointment must always point at a patient record that exists.
+      const patient = mongoose.Types.ObjectId.isValid(patientId)
+        ? await Patient.exists({ _id: patientId })
+        : null;
+
+      if (!patient) {
+        return res.status(400).json({
+          message:
+            "The selected patient record no longer exists. Please refresh and choose another patient."
+        });
+      }
+
+      const serviceCheck = await serviceLookup(serviceId);
+
+      if (!serviceCheck.ok) {
+        return res.status(serviceCheck.status).json({
+          message: serviceCheck.message
+        });
+      }
+
       const appointment = await Appointment.create({
         patientId,
         serviceId,
@@ -121,6 +238,12 @@ const createAppointment = async (req, res) => {
         purpose,
         status: status || "Pending"
       });
+
+      const rejected = await reviewCreatedAppointment(appointment, serviceId);
+
+      if (rejected) {
+        return res.status(rejected.status).json({ message: rejected.message });
+      }
 
       return res.status(201).json({
         message: "Appointment created successfully.",
@@ -141,6 +264,8 @@ const createAppointment = async (req, res) => {
 
 const getAppointments = async (req, res) => {
   try {
+    await syncAppointmentStatuses();
+
     const { patientId } = req.query;
 
     if (isResident(req.user)) {
@@ -204,6 +329,17 @@ const updateAppointment = async (req, res) => {
         });
       }
 
+      if (
+        req.body.status === "Completed" &&
+        appointment.status !== "Completed" &&
+        !(await hasCompletedConsultation(appointment._id))
+      ) {
+        return res.status(400).json({
+          message:
+            "An appointment is completed when its linked consultation is completed."
+        });
+      }
+
       const { patientId, ...updates } = req.body;
 
       const rescheduling =
@@ -239,6 +375,11 @@ const updateAppointment = async (req, res) => {
         });
       }
 
+      await syncAppointmentStatuses(updatedAppointment._id);
+      if (await hasCompletedConsultation(updatedAppointment._id)) {
+        updatedAppointment.status = "Completed";
+      }
+
       return res.json({
         message: "Appointment updated successfully.",
         appointment: updatedAppointment
@@ -249,6 +390,17 @@ const updateAppointment = async (req, res) => {
       if (req.body.status && !APPOINTMENT_STATUSES.includes(req.body.status)) {
         return res.status(400).json({
           message: "Status must be one of: " + APPOINTMENT_STATUSES.join(", ") + "."
+        });
+      }
+
+      if (
+        req.body.status === "Completed" &&
+        appointment.status !== "Completed" &&
+        !(await hasCompletedConsultation(appointment._id))
+      ) {
+        return res.status(400).json({
+          message:
+            "An appointment is completed when its linked consultation is completed."
         });
       }
 
@@ -285,6 +437,11 @@ const updateAppointment = async (req, res) => {
         return res.status(409).json({
           message: "This appointment slot is no longer available. Please select another date or time."
         });
+      }
+
+      await syncAppointmentStatuses(updatedAppointment._id);
+      if (await hasCompletedConsultation(updatedAppointment._id)) {
+        updatedAppointment.status = "Completed";
       }
 
       return res.json({
@@ -328,12 +485,23 @@ const deleteAppointment = async (req, res) => {
       });
     }
 
-    await Appointment.findByIdAndDelete(req.params.id);
+    // Consultations are the record of an appointment, so they are removed with
+    // the appointment instead of being left pointing at a missing record.
+    const removed = await runCascade((session) =>
+      deleteAppointmentWithRecords(appointment, session)
+    );
 
-    res.json({ message: "Appointment deleted successfully." });
+    const summary = describeRemoved({ consultations: removed.consultations });
+
+    res.json({
+      message: summary
+        ? `Appointment deleted successfully. Also removed ${summary}.`
+        : "Appointment deleted successfully.",
+      removed
+    });
   } catch (error) {
     res.status(500).json({
-      message: "Failed to delete appointment.",
+      message: "Failed to delete the appointment and its consultations.",
       error: error.message
     });
   }

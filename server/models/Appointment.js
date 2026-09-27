@@ -40,6 +40,12 @@ const appointmentSchema = new mongoose.Schema(
   }
 );
 
+// Used by the patient/appointment history views and by the cascade cleanup.
+appointmentSchema.index({ patientId: 1 });
+
+// Used by the health service reference check before a service is deleted.
+appointmentSchema.index({ serviceId: 1 });
+
 appointmentSchema.index(
   { serviceId: 1, date: 1, time: 1 },
   {

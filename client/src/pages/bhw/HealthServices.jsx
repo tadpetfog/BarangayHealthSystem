@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Navbar from "../../components/Navbar.jsx";
 import api from "../../services/api.js";
 import { Alert, StatusBadge, EmptyState } from "../../components/dashboard/DashboardUI.jsx";
@@ -12,6 +12,10 @@ function HealthServices() {
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [message, setMessage] = useState("");
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+  const [deleteError, setDeleteError] = useState("");
+  const cancelDeleteRef = useRef(null);
 
   const loadServices = async () => {
     try {
@@ -25,6 +29,62 @@ function HealthServices() {
   useEffect(() => {
     loadServices();
   }, []);
+
+  useEffect(() => {
+    if (!pendingDelete) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setPendingDelete(null);
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    cancelDeleteRef.current?.focus();
+
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [pendingDelete]);
+
+  const openDeleteDialog = (service) => {
+    setMessage("");
+    setDeleteError("");
+    setPendingDelete(service);
+  };
+
+  const closeDeleteDialog = () => {
+    if (deletingId) return;
+    setDeleteError("");
+    setPendingDelete(null);
+  };
+
+  // The backend decides whether a service may be deleted, so the result shown
+  // here always comes from its response (409 = still used by appointments).
+  const confirmDelete = async () => {
+    const service = pendingDelete;
+
+    if (!service) return;
+
+    setDeletingId(service._id);
+    setDeleteError("");
+
+    try {
+      const response = await api.delete(`/health-services/${service._id}`);
+
+      setServices((current) =>
+        current.filter((item) => item._id !== service._id)
+      );
+      setMessage(
+        response.data.message || `${service.name} was deleted successfully.`
+      );
+      setPendingDelete(null);
+      await loadServices();
+    } catch (error) {
+      setDeleteError(
+        error.response?.data?.message || "Failed to delete this health service."
+      );
+      await loadServices();
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -111,10 +171,82 @@ function HealthServices() {
               <p style={{ margin: "0.55rem 0 0" }}>
                 <StatusBadge status={service.status} />
               </p>
+              <div className="record-actions">
+                <button
+                  type="button"
+                  className="danger"
+                  onClick={() => openDeleteDialog(service)}
+                  disabled={Boolean(deletingId)}
+                  title={`Delete the ${service.name} health service`}
+                >
+                  Delete
+                </button>
+              </div>
             </li>
           ))}
         </ul>
       </div>
+
+      {pendingDelete && (
+        <div
+          className="confirm-overlay"
+          role="presentation"
+          onClick={closeDeleteDialog}
+        >
+          <div
+            className="confirm-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="confirm-service-delete-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 id="confirm-service-delete-title">Delete this health service?</h2>
+            <p className="confirm-lead">
+              This permanently removes the service so nobody can book it again.
+              Appointments that were already booked for it are never deleted
+              together with the service.
+            </p>
+
+            <dl className="confirm-account">
+              <div>
+                <dt>Service Name</dt>
+                <dd>{pendingDelete.name}</dd>
+              </div>
+              <div>
+                <dt>Schedule</dt>
+                <dd>
+                  {Array.isArray(pendingDelete.availableDays)
+                    ? pendingDelete.availableDays.join(", ")
+                    : pendingDelete.availableDays}{" "}
+                  · {pendingDelete.startTime}–{pendingDelete.endTime}
+                </dd>
+              </div>
+            </dl>
+
+            {deleteError && <p className="confirm-error">{deleteError}</p>}
+
+            <div className="confirm-actions">
+              <button
+                type="button"
+                className="secondary"
+                ref={cancelDeleteRef}
+                onClick={closeDeleteDialog}
+                disabled={Boolean(deletingId)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="danger"
+                onClick={confirmDelete}
+                disabled={Boolean(deletingId)}
+              >
+                {deletingId ? "Deleting…" : "Delete service"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -20,9 +20,11 @@ import {
   ChartCard
 } from "../../components/dashboard/DashboardUI.jsx";
 import { UserIcon, CalendarIcon, ClipboardIcon } from "../../components/Icons.jsx";
+import { HeartPulse } from "lucide-react";
 
 const STATUS_COLORS = {
   Pending: "#f59e0b",
+  Confirmed: "#2563eb",
   Completed: "#16a34a",
   Cancelled: "#ef4444"
 };
@@ -32,33 +34,82 @@ function Analytics() {
   const [message, setMessage] = useState("");
   const [reportGenerated, setReportGenerated] = useState(null);
 
+  const refreshAnalytics = async () => {
+    try {
+      const response = await api.get("/analytics");
+      setData(response.data);
+      setMessage("");
+      setReportGenerated((generated) =>
+        generated ? new Date().toLocaleString() : null
+      );
+    } catch {
+      setMessage("Failed to load analytics.");
+    }
+  };
+
   useEffect(() => {
+    let cancelled = false;
     const loadAnalytics = async () => {
       try {
         const response = await api.get("/analytics");
-        setData(response.data);
-      } catch (error) {
-        setMessage("Failed to load analytics.");
+        if (!cancelled) {
+          setData(response.data);
+          setMessage("");
+          setReportGenerated((generated) =>
+            generated ? new Date().toLocaleString() : null
+          );
+        }
+      } catch {
+        if (!cancelled) setMessage("Failed to load analytics.");
       }
     };
+
     loadAnalytics();
+    const intervalId = window.setInterval(loadAnalytics, 30000);
+    window.addEventListener("focus", loadAnalytics);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", loadAnalytics);
+    };
   }, []);
 
   const reportRows = data
     ? [
-        { label: "Total Patients", value: data.totalPatients },
-        { label: "Total Appointments", value: data.totalAppointments },
-        { label: "Pending Appointments", value: data.pendingAppointments },
-        { label: "Completed Appointments", value: data.completedAppointments },
-        { label: "Cancelled Appointments", value: data.cancelledAppointments },
-        { label: "Total Consultations", value: data.totalConsultations },
-        { label: "Health Services Provided", value: data.totalConsultations }
+        { category: "Resident records", label: "Total Patients", value: data.totalPatients },
+        { category: "Appointments", label: "Total Appointments", value: data.totalAppointments },
+        { category: "Appointments", label: "Pending Appointments", value: data.pendingAppointments },
+        { category: "Appointments", label: "Confirmed Appointments", value: data.confirmedAppointments },
+        { category: "Appointments", label: "Completed Appointments", value: data.completedAppointments },
+        { category: "Appointments", label: "Cancelled Appointments", value: data.cancelledAppointments },
+        { category: "Consultations & services", label: "Total Consultations", value: data.totalConsultations },
+        { category: "Consultations & services", label: "Completed Consultations", value: data.completedConsultations },
+        { category: "Consultations & services", label: "Cancelled Consultations", value: data.cancelledConsultations },
+        { category: "Consultations & services", label: "Health Services Provided", value: data.healthServicesProvided }
       ]
     : [];
+
+  const reportSummary = data
+    ? [
+        { label: "Total Patients", value: data.totalPatients },
+        { label: "Total Appointments", value: data.totalAppointments },
+        { label: "Total Consultations", value: data.totalConsultations },
+        { label: "Health Services Provided", value: data.healthServicesProvided }
+      ]
+    : [];
+
+  const reportGroups = ["Resident records", "Appointments", "Consultations & services"].map(
+    (category) => ({
+      label: category,
+      rows: reportRows.filter((row) => row.category === category)
+    })
+  );
 
   const statusData = data
     ? [
         { name: "Pending", count: data.pendingAppointments },
+        { name: "Confirmed", count: data.confirmedAppointments },
         { name: "Completed", count: data.completedAppointments },
         { name: "Cancelled", count: data.cancelledAppointments }
       ]
@@ -85,7 +136,7 @@ function Analytics() {
   };
 
   return (
-    <div>
+    <div className="analytics-page">
       <Navbar />
       <div className="page">
         <DashboardHeader
@@ -120,7 +171,7 @@ function Analytics() {
                 icon={<ClipboardIcon />}
                 label="Total Consultations"
                 value={data.totalConsultations}
-                hint="Health services provided to residents."
+                hint={`${data.completedConsultations} completed · ${data.cancelledConsultations} cancelled`}
                 tone="teal"
               />
             </div>
@@ -241,6 +292,9 @@ function Analytics() {
                 statistics. You can print it or download it as a CSV file.
               </p>
 
+              <button type="button" onClick={refreshAnalytics}>
+                Refresh Data
+              </button>
               <button
                 type="button"
                 onClick={() => setReportGenerated(new Date().toLocaleString())}
@@ -260,21 +314,81 @@ function Analytics() {
             </div>
 
             {reportGenerated && (
-              <div className="chart-card report-area" style={{ marginTop: "1.5rem" }}>
-                <h2>Barangay Health Center — Health Statistics Report</h2>
-                <p style={{ color: "var(--text-muted)" }}>
-                  Generated {reportGenerated} · Aggregated figures only (no
-                  individual patient information).
+              <article className="report-area" aria-labelledby="report-title">
+                <header className="report-header">
+                  <div className="report-heading">
+                    <div className="report-brand-row">
+                      <span className="care-mark report-brand-mark" aria-hidden="true">
+                        <HeartPulse />
+                      </span>
+                      <p className="report-facility">Barangay Health Center</p>
+                    </div>
+                    <h2 id="report-title">Health Statistics Report</h2>
+                    <p className="report-intro">
+                      System-wide totals for patient records, appointments,
+                      consultations, and services.
+                    </p>
+                  </div>
+                  <dl className="report-meta">
+                    <div>
+                      <dt>Generated</dt>
+                      <dd>{reportGenerated}</dd>
+                    </div>
+                    <div>
+                      <dt>Data scope</dt>
+                      <dd>All recorded data</dd>
+                    </div>
+                  </dl>
+                </header>
+
+                <p className="report-disclaimer">
+                  Aggregated figures only. This report does not include individual patient information.
                 </p>
 
-                <ul style={{ marginTop: "1rem" }}>
-                  {reportRows.map((row) => (
-                    <li key={row.label} style={{ listStyle: "none", padding: "0.5rem 0", borderBottom: "1px solid #e6ebf2" }}>
-                      <strong>{row.label}:</strong> {row.value}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+                <section className="report-section" aria-labelledby="report-summary-title">
+                  <h3 id="report-summary-title">Summary Statistics</h3>
+                  <dl className="report-summary">
+                    {reportSummary.map((item) => (
+                      <div key={item.label}>
+                        <dt>{item.label}</dt>
+                        <dd>{item.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
+
+                <section className="report-section report-details" aria-labelledby="report-details-title">
+                  <h3 id="report-details-title">Detailed Statistics</h3>
+                  <table className="report-table">
+                    <caption className="sr-only">Detailed health statistics by category</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Statistic</th>
+                        <th scope="col" className="report-count">Count</th>
+                      </tr>
+                    </thead>
+                    {reportGroups.map((group) => (
+                      <tbody className="report-table-group" key={group.label}>
+                        <tr>
+                          <th className="report-group-title" scope="colgroup" colSpan="2">
+                            {group.label}
+                          </th>
+                        </tr>
+                        {group.rows.map((row) => (
+                          <tr key={row.label}>
+                            <th scope="row">{row.label}</th>
+                            <td className="report-count">{row.value}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    ))}
+                  </table>
+                </section>
+                <footer className="report-footer">
+                  <span>Barangay Health Center</span>
+                  <span>Health Statistics Report</span>
+                </footer>
+              </article>
             )}
           </>
         )}
