@@ -5,24 +5,15 @@ import { StatusBadge, EmptyState } from "../components/dashboard/DashboardUI.jsx
 import { CalendarIcon } from "../components/Icons.jsx";
 
 function PatientProfile() {
-  const [patient, setPatient] = useState(null);
+  const [, setPatient] = useState(null);
   const [patientId, setPatientId] = useState(null);
   const [fullName, setFullName] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [sex, setSex] = useState("");
   const [address, setAddress] = useState("");
   const [contactNumber, setContactNumber] = useState("");
-  const [history, setHistory] = useState([]);
   const [appointmentHistory, setAppointmentHistory] = useState([]);
-  const [consultationHistory, setConsultationHistory] = useState([]);
-  const [showNewHistory, setShowNewHistory] = useState(false);
-  const [newHistory, setNewHistory] = useState({
-    date: "",
-    time: "",
-    service: "",
-    status: "Completed",
-    staff: ""
-  });
+  const [, setConsultationHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
 

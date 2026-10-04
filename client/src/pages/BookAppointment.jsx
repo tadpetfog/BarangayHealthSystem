@@ -2,7 +2,11 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar.jsx";
 import api from "../services/api.js";
-import { checkBooking } from "../utils/availability.js";
+import {
+  checkBooking,
+  getSlotStart,
+  describeAvailability as describeSlotSentence
+} from "../utils/availability.js";
 
 function BookAppointment() {
   const [services, setServices] = useState([]);
@@ -13,6 +17,7 @@ function BookAppointment() {
   const [message, setMessage] = useState("");
   const [scheduleHint, setScheduleHint] = useState("");
   const [servicesLoaded, setServicesLoaded] = useState(false);
+  const [slot, setSlot] = useState(null);
   const navigate = useNavigate();
 
   const loadServices = async () => {
@@ -20,7 +25,7 @@ function BookAppointment() {
       const response = await api.get("/health-services");
       setServices(response.data.filter((s) => s.status === "Active"));
       setServicesLoaded(true);
-    } catch (error) {
+    } catch {
       setMessage("Failed to load services.");
     }
   };
@@ -31,9 +36,6 @@ function BookAppointment() {
 
   const selectedService = services.find((s) => s._id === serviceId) || null;
 
-  // An administrator can delete a service while this page is open. As soon as
-  // the refreshed list no longer contains the selected service the selection is
-  // dropped, so a stale service can never be submitted.
   useEffect(() => {
     if (!servicesLoaded || !serviceId) return;
 
@@ -53,15 +55,38 @@ function BookAppointment() {
     }
 
     const check = checkBooking(selectedService, date, time);
-    return check.ok
-      ? `Within schedule: ${(selectedService.availableDays || []).join(", ")} · ${selectedService.startTime}–${selectedService.endTime}.`
-      : check.message;
+    if (!check.ok) return check.message;
+
+    const withinSchedule = `Within schedule: ${(selectedService.availableDays || []).join(", ")} · ${selectedService.startTime}–${selectedService.endTime}.`;
+
+    return slot ? `${withinSchedule} ${describeSlotSentence(slot)}` : withinSchedule;
   };
 
   useEffect(() => {
+    let cancelled = false;
+
+    if (!serviceId || !date || getSlotStart(time) === null) {
+      setSlot(null);
+      return undefined;
+    }
+
+    api
+      .get("/appointments/slot", { params: { serviceId, date, time } })
+      .then((response) => {
+        if (!cancelled) setSlot(response.data);
+      })
+      .catch(() => {
+        if (!cancelled) setSlot(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [serviceId, date, time]);
+
+  useEffect(() => {
     setScheduleHint(describeAvailability());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serviceId, date, time, services.length]);
+  }, [serviceId, date, time, services.length, slot]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -71,6 +96,13 @@ function BookAppointment() {
       if (!precheck.ok) {
         setMessage(precheck.message);
         setScheduleHint(precheck.message);
+        return;
+      }
+
+      if (slot?.full) {
+        const full = describeSlotSentence(slot);
+        setMessage(full);
+        setScheduleHint(full);
         return;
       }
     }
@@ -104,8 +136,6 @@ function BookAppointment() {
         error.response?.data?.message || "Failed to book appointment."
       );
 
-      // A 400/409 usually means the service is gone: reload the list so the
-      // dropdown stops offering it (the effect above clears the selection).
       if (status === 400 || status === 409) {
         await loadServices();
       }

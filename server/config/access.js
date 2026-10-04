@@ -158,7 +158,6 @@ module.exports = {
   ownsPatientId,
   DAYS_OF_WEEK,
   parseTimeToMinutes,
-  parseAppointmentDate,
   startOfDay,
   checkServiceAvailability
 };

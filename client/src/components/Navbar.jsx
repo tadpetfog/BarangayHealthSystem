@@ -1,19 +1,13 @@
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Phone, Mail, MapPin } from "lucide-react";
 import CareTechLogo from "./CareTechLogo.jsx";
+import { roleLabels } from "../utils/roles.js";
 
 const dashboardPaths = {
   resident: "/dashboard",
   bhw: "/bhw-dashboard",
   staff: "/staff-dashboard",
   admin: "/admin-dashboard"
-};
-
-const roleLabels = {
-  resident: "Resident",
-  bhw: "Barangay Health Worker",
-  staff: "Health Center Staff",
-  admin: "Administrator"
 };
 
 const sectionLinks = {
@@ -67,6 +61,7 @@ function Navbar() {
   const user = JSON.parse(localStorage.getItem("user"));
 
   const handleLogout = () => {
+    if (!window.confirm("Are you sure you want to log out?")) return;
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     navigate("/login");

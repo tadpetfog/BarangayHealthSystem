@@ -7,7 +7,6 @@ import { ClipboardIcon } from "../../components/Icons.jsx";
 function Consultations() {
   const [consultations, setConsultations] = useState([]);
   const [appointments, setAppointments] = useState([]);
-  const [patientServiceMap, setPatientServiceMap] = useState({});
   const [appointmentId, setAppointmentId] = useState("");
   const [serviceProvided, setServiceProvided] = useState("");
   const [notes, setNotes] = useState("");
@@ -19,13 +18,12 @@ function Consultations() {
     status: "Completed"
   });
   const [message, setMessage] = useState("");
-  const [completingId, setCompletingId] = useState(null);
 
   const loadConsultations = async () => {
     try {
       const response = await api.get("/consultations");
       setConsultations(response.data);
-    } catch (error) {
+    } catch {
       setMessage("Failed to load consultations.");
     }
   };
@@ -33,24 +31,8 @@ function Consultations() {
   const loadAppointments = async () => {
     try {
       const response = await api.get("/appointments");
-      const map = {};
-      for (const a of response.data) {
-        if (a._id && a.serviceId) {
-          map[a._id] = {
-            _id: a._id,
-            patientId: a.patientId?._id || a.patientId,
-            patientName: a.patientId?.fullName || "",
-            serviceId: a.serviceId._id || a.serviceId,
-            serviceName:
-              typeof a.serviceId === "object"
-                ? a.serviceId.name
-                : a.serviceName || ""
-          };
-        }
-      }
-      setPatientServiceMap(map);
       setAppointments(response.data);
-    } catch (error) {
+    } catch {
       setMessage("Failed to load appointments.");
     }
   };
@@ -76,6 +58,8 @@ function Consultations() {
   };
 
   const saveEdit = async (id) => {
+    // Editing overwrites the saved consultation, so ask before it is sent.
+    if (!window.confirm("Are you sure?")) return;
     try {
       const response = await api.put(`/consultations/${id}`, editForm);
       setMessage(response.data.message || "Consultation updated.");
@@ -102,27 +86,6 @@ function Consultations() {
       setMessage(
         error.response?.data?.message || "Failed to delete consultation."
       );
-    }
-  };
-
-  const completeConsultation = async (consultation) => {
-    if (!window.confirm(
-      `Complete this consultation and mark the linked appointment as completed?`
-    ))
-      return;
-    setCompletingId(consultation._id);
-    try {
-      const response = await api.post(`/consultations/${consultation._id}/complete`);
-      setMessage(response.data.message || "Consultation completed.");
-      loadConsultations();
-      loadAppointments();
-    } catch (error) {
-      setMessage(
-        error.response?.data?.message ||
-          "Failed to complete consultation."
-      );
-    } finally {
-      setCompletingId(null);
     }
   };
 

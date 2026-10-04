@@ -40,6 +40,16 @@ const parseTimeToMinutes = (value) => {
 
 const normalizeDay = (value) => String(value || "").trim().toLowerCase();
 
+const SLOT_CAPACITY = 5;
+const SLOT_MINUTES = 60;
+
+/** The start of the one hour period a booking time falls into. */
+const getSlotStart = (time) => {
+  const minutes = parseTimeToMinutes(time);
+  if (minutes === null) return null;
+  return Math.floor(minutes / SLOT_MINUTES) * SLOT_MINUTES;
+};
+
 const parseBookingDate = (value) => {
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
   if (value === null || value === undefined) return null;
@@ -115,4 +125,21 @@ const checkBooking = (service, date, time) => {
   return { ok: true, dayName };
 };
 
-export { DAYS_OF_WEEK, parseTimeToMinutes, parseBookingDate, checkBooking };
+const describeAvailability = (slot) => {
+  if (!slot || slot.slot === null) return "";
+
+  if (slot.full) {
+    return `${slot.slot} is fully booked (${SLOT_CAPACITY} residents per hour). Please select another date or time.`;
+  }
+
+  const remaining = `${slot.remaining} of ${SLOT_CAPACITY} slots remaining`;
+
+  return `${slot.slot}: ${remaining} (${SLOT_CAPACITY} residents per hour).`;
+};
+
+export {
+  checkBooking,
+  SLOT_CAPACITY,
+  getSlotStart,
+  describeAvailability
+};

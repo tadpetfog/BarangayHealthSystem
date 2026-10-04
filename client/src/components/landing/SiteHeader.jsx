@@ -25,7 +25,6 @@ export function SiteHeader() {
 
   return (
     <header id="home">
-      {}
       <div className="bg-navy text-white">
         <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-2 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
           <div className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6 sm:gap-y-1.5">
@@ -56,7 +55,6 @@ export function SiteHeader() {
         </div>
       </div>
 
-      {}
       <div className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
         <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3.5 sm:px-6 lg:px-8">
           <Logo />

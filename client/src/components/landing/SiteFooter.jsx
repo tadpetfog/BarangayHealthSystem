@@ -14,7 +14,6 @@ export function SiteFooter() {
     <footer className="bg-[#081d33] text-white/75">
       <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
         <div className="grid gap-10 md:grid-cols-3">
-          {}
           <div>
             <div className="flex items-center gap-2">
               <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-green text-white">
@@ -38,7 +37,6 @@ export function SiteFooter() {
             </div>
           </div>
 
-          {}
           <div>
             <h3 className="font-heading text-base font-semibold text-white">Our Plan</h3>
             <ul className="mt-4 space-y-3 text-sm">
@@ -57,7 +55,6 @@ export function SiteFooter() {
             </ul>
           </div>
 
-          {}
           <div>
             <h3 className="font-heading text-base font-semibold text-white">Contact Us</h3>
             <ul className="mt-4 space-y-3 text-sm">

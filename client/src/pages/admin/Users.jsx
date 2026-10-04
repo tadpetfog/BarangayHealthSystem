@@ -4,13 +4,7 @@ import api from "../../services/api.js";
 import { Alert, EmptyState, StatusBadge } from "../../components/dashboard/DashboardUI.jsx";
 import { UsersIcon } from "../../components/Icons.jsx";
 import { ShieldIcon } from "../../components/Icons.jsx";
-
-const roleLabels = {
-  resident: "Resident",
-  bhw: "Barangay Health Worker",
-  staff: "Health Center Staff",
-  admin: "Administrator"
-};
+import { roleLabels } from "../../utils/roles.js";
 
 const creatableRoles = [
   { value: "bhw", label: "Barangay Health Worker" },

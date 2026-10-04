@@ -45,6 +45,9 @@ function MyAppointments() {
   }, [reloadKey]);
 
   const saveChanges = async (id, payload, successMessage) => {
+    // Both rescheduling and cancelling rewrite the appointment, so ask first.
+    if (!window.confirm("Are you sure?")) return;
+
     try {
       await api.put(`/appointments/${id}`, payload);
       setMessage(successMessage);

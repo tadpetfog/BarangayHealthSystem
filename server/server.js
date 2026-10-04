@@ -5,6 +5,7 @@ const cors = require("cors");
 const connectDB = require("./config/db");
 const { ensureStaticAdmin } = require("./config/staticAdmin");
 const { transactionsAvailable } = require("./config/dataIntegrity");
+const { dropLegacySlotIndex } = require("./config/appointmentSlots");
 const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
 const patientRoutes = require("./routes/patientRoutes");
@@ -30,6 +31,12 @@ connectDB().then(async () => {
       ? "Cascade deletions run inside a MongoDB transaction."
       : "MongoDB standalone: cascade deletions run sequentially (with a retry) because transactions are unavailable."
   );
+
+  if (await dropLegacySlotIndex()) {
+    console.log(
+      "Removed the old per-time appointment index: a period holds up to 5 residents."
+    );
+  }
 });
 
 app.use(cors());

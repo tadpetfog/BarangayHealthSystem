@@ -12,18 +12,23 @@ const {
   describeRemoved
 } = require("../config/dataIntegrity");
 const {
+  SLOT_CAPACITY,
+  describeSlot,
+  listSlotAppointments,
+  getSlotAvailability
+} = require("../config/appointmentSlots");
+const {
   isResident,
   isHealthCenter,
   ownPatientIds,
   ownsPatientId,
-  startOfDay,
-  checkServiceAvailability,
-  parseTimeToMinutes
+  checkServiceAvailability
 } = require("../config/access");
 
 const APPOINTMENT_STATUSES = ["Pending", "Confirmed", "Completed", "Cancelled"];
 
-const BLOCKING_STATUSES = ["Pending", "Confirmed", "Completed"];
+const fullSlotMessage = (time) =>
+  `${describeSlot(time) || "That time slot"} is fully booked (${SLOT_CAPACITY} residents per hour). Please select another date or time.`;
 
 const validateBooking = async ({ serviceId, date, time }, excludeId = null) => {
   if (!serviceId || !date || !time) {
@@ -41,53 +46,55 @@ const validateBooking = async ({ serviceId, date, time }, excludeId = null) => {
     return { ok: false, status: 400, message: availability.message };
   }
 
-  const slot = await findBlockingAppointment({ serviceId, date, time }, excludeId);
-  if (slot) {
-    return {
-      ok: false,
-      status: 409,
-      message:
-        "This appointment slot is no longer available. Please select another date or time."
-    };
+  const slot = await getSlotAvailability({ serviceId, date, time }, excludeId);
+  if (slot.full) {
+    return { ok: false, status: 409, message: fullSlotMessage(time) };
   }
 
   return { ok: true, service };
 };
 
-const findBlockingAppointment = async ({ serviceId, date, time }, excludeId = null) => {
-  const day = startOfDay(date);
-  if (!day) return null;
+const reviewCreatedSlot = async (appointment) => {
+  const booked = await listSlotAppointments({
+    serviceId: appointment.serviceId,
+    date: appointment.date,
+    time: appointment.time
+  });
 
-  const minutes = parseTimeToMinutes(time);
-  if (minutes === null) return null;
+  if (booked.length <= SLOT_CAPACITY) {
+    return null;
+  }
 
-  const start = new Date(day);
-  const end = new Date(day);
-  end.setDate(end.getDate() + 1);
-
-  const candidates = await Appointment.find({
-    serviceId,
-    date: { $gte: start, $lt: end },
-    status: { $in: BLOCKING_STATUSES }
-  })
-    .select("_id serviceId date time status")
-    .lean();
-
-  return (
-    candidates.find((appt) => {
-      if (excludeId && String(appt._id) === String(excludeId)) return false;
-      return parseTimeToMinutes(appt.time) === minutes;
-    }) || null
+  const ordered = [...booked].sort((a, b) =>
+    String(a._id).localeCompare(String(b._id))
   );
+  const position = ordered.findIndex(
+    (candidate) => String(candidate._id) === String(appointment._id)
+  );
+
+  if (position === -1 || position < SLOT_CAPACITY) {
+    return null;
+  }
+
+  try {
+    await Appointment.deleteOne({ _id: appointment._id });
+  } catch (error) {
+    console.error(
+      `Could not roll back appointment ${appointment._id}: ${error.message}`
+    );
+
+    return {
+      status: 500,
+      message:
+        "That time slot filled up while the appointment was being booked and the appointment could not be rolled back. Please contact the administrator."
+    };
+  }
+
+  return { status: 409, message: fullSlotMessage(appointment.time) };
 };
 
 const isDuplicateSlotError = (error) => error && error.code === 11000;
 
-/**
- * MongoDB has no foreign keys, so a booking is only accepted when the health
- * service it references still exists. This is what protects a booking when a
- * service is deleted while the booking form is open.
- */
 const serviceLookup = async (serviceId) => {
   if (!serviceId || !mongoose.Types.ObjectId.isValid(serviceId)) {
     return {
@@ -111,12 +118,6 @@ const serviceLookup = async (serviceId) => {
   return { ok: true };
 };
 
-/**
- * Verifies, right after the appointment was stored, that the health service is
- * still there. If an administrator removed it in the meantime the appointment
- * is rolled back instead of keeping a reference to a deleted service.
- * Returns null when the booking is valid.
- */
 const reviewCreatedAppointment = async (appointment, serviceId) => {
   const serviceStillExists = await HealthService.exists({ _id: serviceId });
 
@@ -164,6 +165,16 @@ const createAppointment = async (req, res) => {
         });
       }
 
+      const capacity = await getSlotAvailability({
+        serviceId: req.body.serviceId,
+        date: req.body.date,
+        time: req.body.time
+      });
+
+      if (capacity.full) {
+        return res.status(409).json({ message: fullSlotMessage(req.body.time) });
+      }
+
       const appointment = await Appointment.create({
         patientId: req.body.patientId,
         serviceId: req.body.serviceId,
@@ -180,6 +191,12 @@ const createAppointment = async (req, res) => {
 
       if (rejected) {
         return res.status(rejected.status).json({ message: rejected.message });
+      }
+
+      const overbooked = await reviewCreatedSlot(appointment);
+
+      if (overbooked) {
+        return res.status(overbooked.status).json({ message: overbooked.message });
       }
 
       return res.status(201).json({
@@ -210,7 +227,6 @@ const createAppointment = async (req, res) => {
         });
       }
 
-      // An appointment must always point at a patient record that exists.
       const patient = mongoose.Types.ObjectId.isValid(patientId)
         ? await Patient.exists({ _id: patientId })
         : null;
@@ -230,6 +246,12 @@ const createAppointment = async (req, res) => {
         });
       }
 
+      const capacity = await getSlotAvailability({ serviceId, date, time });
+
+      if (capacity.full) {
+        return res.status(409).json({ message: fullSlotMessage(time) });
+      }
+
       const appointment = await Appointment.create({
         patientId,
         serviceId,
@@ -243,6 +265,12 @@ const createAppointment = async (req, res) => {
 
       if (rejected) {
         return res.status(rejected.status).json({ message: rejected.message });
+      }
+
+      const overbooked = await reviewCreatedSlot(appointment);
+
+      if (overbooked) {
+        return res.status(overbooked.status).json({ message: overbooked.message });
       }
 
       return res.status(201).json({
@@ -299,6 +327,27 @@ const getAppointments = async (req, res) => {
   } catch (error) {
     res.status(500).json({
       message: "Failed to retrieve appointments.",
+      error: error.message
+    });
+  }
+};
+
+const getAppointmentSlot = async (req, res) => {
+  try {
+    const { serviceId, date, time } = req.query;
+
+    if (!serviceId || !date || !time) {
+      return res.status(400).json({
+        message: "Service, date and time are required."
+      });
+    }
+
+    const availability = await getSlotAvailability({ serviceId, date, time });
+
+    return res.json(availability);
+  } catch (error) {
+    res.status(500).json({
+      message: "Failed to check the appointment slot.",
       error: error.message
     });
   }
@@ -485,8 +534,6 @@ const deleteAppointment = async (req, res) => {
       });
     }
 
-    // Consultations are the record of an appointment, so they are removed with
-    // the appointment instead of being left pointing at a missing record.
     const removed = await runCascade((session) =>
       deleteAppointmentWithRecords(appointment, session)
     );
@@ -510,6 +557,7 @@ const deleteAppointment = async (req, res) => {
 module.exports = {
   createAppointment,
   getAppointments,
+  getAppointmentSlot,
   updateAppointment,
   deleteAppointment
 };

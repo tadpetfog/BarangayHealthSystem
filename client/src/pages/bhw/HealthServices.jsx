@@ -11,6 +11,7 @@ function HealthServices() {
   const [availableDays, setAvailableDays] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
+  const [specificDate, setSpecificDate] = useState("");
   const [message, setMessage] = useState("");
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
@@ -21,7 +22,7 @@ function HealthServices() {
     try {
       const response = await api.get("/health-services");
       setServices(response.data);
-    } catch (error) {
+    } catch {
       setMessage("Failed to load health services.");
     }
   };
@@ -96,6 +97,9 @@ function HealthServices() {
         availableDays: availableDays.split(",").map((d) => d.trim()).filter(Boolean),
         startTime,
         endTime,
+        // Only sent when a date was picked, so a service with no date is
+        // saved exactly the way it was before this field existed.
+        ...(specificDate ? { specificDate } : {}),
         status: "Active"
       });
 
@@ -105,6 +109,7 @@ function HealthServices() {
       setAvailableDays("");
       setStartTime("");
       setEndTime("");
+      setSpecificDate("");
       loadServices();
     } catch (error) {
       setMessage(error.response?.data?.message || "Failed to add service.");
@@ -134,7 +139,7 @@ function HealthServices() {
 
             <div>
               <label>Available Days (comma separated)</label>
-              <input type="text" placeholder="Monday, Tuesday, Friday" value={availableDays} onChange={(e) => setAvailableDays(e.target.value)} required />
+              <input type="text" placeholder="Monday, Tuesday, Friday" value={availableDays} onChange={(e) => setAvailableDays(e.target.value)} disabled={Boolean(specificDate)} required />
             </div>
 
             <div>
@@ -145,6 +150,19 @@ function HealthServices() {
             <div>
               <label>End Time</label>
               <input type="text" placeholder="05:00 PM" value={endTime} onChange={(e) => setEndTime(e.target.value)} required />
+            </div>
+
+            <div>
+              <label>Specific Date</label>
+              <input
+                type="date"
+                value={specificDate}
+                onChange={(e) => {
+                  setSpecificDate(e.target.value);
+                  // A specific date and available days cannot both be set.
+                  if (e.target.value) setAvailableDays("");
+                }}
+              />
             </div>
 
             <button type="submit">Add Service</button>
@@ -168,6 +186,9 @@ function HealthServices() {
               <p>{service.description}</p>
               <p><strong>Days:</strong> {Array.isArray(service.availableDays) ? service.availableDays.join(", ") : service.availableDays}</p>
               <p><strong>Time:</strong> {service.startTime} - {service.endTime}</p>
+              {service.specificDate && (
+                <p><strong>Specific Date:</strong> {service.specificDate.split("T")[0]}</p>
+              )}
               <p style={{ margin: "0.55rem 0 0" }}>
                 <StatusBadge status={service.status} />
               </p>

@@ -33,7 +33,6 @@ createRoot(document.getElementById("root")).render(
 
         <Route path="/app" element={<App />} />
 
-        {}
         <Route path="/dashboard" element={
           <ProtectedRoute allowedRoles={["resident"]}>
             <ResidentDashboard />
@@ -60,7 +59,6 @@ createRoot(document.getElementById("root")).render(
           </ProtectedRoute>
         } />
 
-        {}
         <Route path="/bhw-dashboard" element={
           <ProtectedRoute allowedRoles={["bhw"]}>
             <BHWDashboard />
@@ -92,7 +90,6 @@ createRoot(document.getElementById("root")).render(
           </ProtectedRoute>
         } />
 
-        {}
         <Route path="/staff-dashboard" element={
           <ProtectedRoute allowedRoles={["staff"]}>
             <StaffDashboard />
@@ -124,7 +121,6 @@ createRoot(document.getElementById("root")).render(
           </ProtectedRoute>
         } />
 
-        {}
         <Route path="/admin-dashboard" element={
           <ProtectedRoute allowedRoles={["admin"]}>
             <AdminDashboard />
@@ -160,7 +156,6 @@ createRoot(document.getElementById("root")).render(
             <AdminUsers />
           </ProtectedRoute>
         } />
-      {}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

@@ -42,7 +42,7 @@ function ResidentDashboard() {
           );
           setAppointmentCount(mine.length);
         }
-      } catch (error) {
+      } catch {
       }
     };
 

@@ -94,6 +94,9 @@ function HealthServices() {
               <p>{service.description}</p>
               <p><strong>Available Days:</strong> {Array.isArray(service.availableDays) ? service.availableDays.join(", ") : service.availableDays}</p>
               <p><strong>Time:</strong> {service.startTime} - {service.endTime}</p>
+              {service.specificDate && (
+                <p><strong>Specific Date:</strong> {service.specificDate.split("T")[0]}</p>
+              )}
               <p style={{ margin: "0.55rem 0 0" }}>
                 <StatusBadge status={service.status} />
               </p>

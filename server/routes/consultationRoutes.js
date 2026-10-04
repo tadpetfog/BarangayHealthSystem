@@ -4,8 +4,7 @@ const {
   getConsultations,
   updateConsultation,
   deleteConsultation,
-  completeConsultation,
-  getPatientAppointmentHistory
+  completeConsultation
 } = require("../controllers/consultationController");
 const { protect, authorize } = require("../middleware/authMiddleware");
 const { HEALTH_CENTER_ROLES } = require("../config/access");

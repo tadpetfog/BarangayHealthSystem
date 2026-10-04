@@ -76,6 +76,8 @@ function Appointments() {
         return;
       }
     }
+    // Editing rewrites an existing appointment, so ask before it is saved.
+    if (editingId && !window.confirm("Are you sure?")) return;
     try {
       const response = editingId
         ? await api.put(`/appointments/${editingId}`, form)

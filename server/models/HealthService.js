@@ -28,6 +28,12 @@ const healthServiceSchema = new mongoose.Schema(
       required: true
     },
 
+    // Optional: pins the service to one specific calendar date. Missing on
+    // every service that was created before this field existed.
+    specificDate: {
+      type: Date
+    },
+
     status: {
       type: String,
       enum: ["Active", "Inactive"],

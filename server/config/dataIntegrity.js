@@ -234,7 +234,6 @@ module.exports = {
   runCascade,
   transactionsAvailable,
   deletePatientDependants,
-  deleteAppointmentDependants,
   deletePatientWithRecords,
   deleteAppointmentWithRecords,
   deleteUserWithRecords,

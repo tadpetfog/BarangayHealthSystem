@@ -3,6 +3,7 @@ import Navbar from "../../components/Navbar.jsx";
 import api from "../../services/api.js";
 import { Alert, StatusBadge, EmptyState } from "../../components/dashboard/DashboardUI.jsx";
 import { UserIcon, CalendarIcon } from "../../components/Icons.jsx";
+import { roleLabels } from "../../utils/roles.js";
 
 const emptyForm = {
   userId: "",
@@ -11,13 +12,6 @@ const emptyForm = {
   sex: "",
   address: "",
   contactNumber: ""
-};
-
-const roleLabels = {
-  resident: "Resident",
-  bhw: "Barangay Health Worker",
-  staff: "Health Center Staff",
-  admin: "Administrator"
 };
 
 const APPOINTMENT_STATUSES = ["Pending", "Confirmed", "Cancelled"];
@@ -100,6 +94,9 @@ function Patients() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+
+    // Editing rewrites an existing patient record, so ask before it is saved.
+    if (editingId && !window.confirm("Are you sure?")) return;
 
     try {
       const response = editingId
@@ -197,6 +194,9 @@ function Patients() {
   };
 
   const saveHistoryEdit = async (patientId, apptId) => {
+    // Editing overwrites the saved appointment, so ask before it is sent.
+    if (!window.confirm("Are you sure?")) return;
+
     try {
       const response = await api.put(`/appointments/${apptId}`, historyEdit);
       setHistoryMessage(response.data.message || "Appointment updated.");
