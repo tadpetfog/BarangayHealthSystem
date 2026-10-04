@@ -447,8 +447,3 @@ node scripts/repair-data-integrity.cjs --delete-orphans
 - **CORS and rate limiting** — the API uses open CORS (`app.use(cors())`) with no rate limiting, which is convenient for local/barangay use but should be reviewed before public exposure.
 - **Transactions** — cascade deletes run atomically only when MongoDB supports transactions (a replica set / sharded cluster). On a standalone server they run sequentially with one retry.
 - **Testing** — only the backend has automated tests (`node:test`); there is no frontend test suite.
-
-
-
-
-
